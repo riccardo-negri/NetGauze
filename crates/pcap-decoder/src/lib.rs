@@ -39,6 +39,7 @@ pub struct Config {
     pub input_size: Option<usize>,
     pub pcap_path: PathBuf,
     pub output_path: Option<PathBuf>,
+    pub show_packet_number: bool,
 }
 
 /// Handlers re-export
@@ -70,8 +71,10 @@ where
     H: ProtocolHandler<M, C, E>,
 {
     let pcap_file = File::open(config.pcap_path.as_path()).expect("Failed to open pcap file");
-    let pcap_reader =
-        Box::new(pcap_parser::LegacyPcapReader::new(PCAP_BUFFER_SIZE, pcap_file).unwrap());
+    let pcap_reader = Box::new(pcap_parser::LegacyPcapReader::new(
+        PCAP_BUFFER_SIZE,
+        pcap_file,
+    )?);
 
     let mut exporter_peers: HashMap<(IpAddr, u16, IpAddr, u16), (C, bytes::BytesMut)> =
         HashMap::new();
@@ -105,7 +108,15 @@ where
         {
             for result in message {
                 let serialized_data = handler.serialize(result)?;
-                writer.write_all(serde_json::to_string(&serialized_data)?.as_bytes())?;
+                let output = if config.show_packet_number {
+                    serde_json::json!({
+                        "packet_number": packet_counter,
+                        "data": serialized_data,
+                    })
+                } else {
+                    serialized_data
+                };
+                writer.write_all(serde_json::to_string(&output)?.as_bytes())?;
                 writer.write_all(b"\n")?;
             }
         }
