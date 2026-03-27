@@ -155,6 +155,25 @@ fn main() -> anyhow::Result<()> {
     runtime.block_on(async move {
         init_open_telemetry(&config.telemetry).map_err(|err| anyhow!(err))?;
         let meter = global::meter_provider().meter("netgauze");
+
+        // Register an observable gauge that always reports 1 so monitoring
+        // systems can detect when the collector is up and running, and which
+        // version is deployed.
+        let version = build::PKG_VERSION.to_string();
+        let _info_gauge = meter
+            .u64_observable_gauge("netgauze.collector.info")
+            .with_description(
+                "Always emits 1 while the collector is running. \
+                 Carries version metadata as attributes.",
+            )
+            .with_callback(move |observer| {
+                observer.observe(
+                    1,
+                    &[opentelemetry::KeyValue::new("version", version.clone())],
+                );
+            })
+            .build();
+
         let mut handles = vec![];
 
         if let Some(flow_config) = config.flow {
